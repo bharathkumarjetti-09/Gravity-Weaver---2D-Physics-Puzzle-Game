@@ -3,7 +3,7 @@
 A fast-paced, 2D physics-based web game built using pure JavaScript and HTML5 Canvas. Players alter environmental gravity by weaving directional force vectors to guide a cosmic orb through hazardous dimensions into the goal portal.
 
 ## 🚀 Live Demo
-[Play Gravity Weaver Live]([https://bharathkumarjetti-09.github.io/gravity-weaver](https://bharathkumarjetti-09.github.io/gravity-weaver)
+[Play Gravity Weaver Live](https://bharathkumarjetti-09.github.io/Gravity-Weaver---2D-Physics-Puzzle-Game/).
 
 ## ✨ Key Features
 * **Custom Physics & Vector Mechanics:** Real-time trajectory calculation, velocity drag, and directional gravity manipulation.
