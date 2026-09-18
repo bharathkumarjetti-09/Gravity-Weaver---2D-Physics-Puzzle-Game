@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Gravity Weaver - 10 Levels (Easy Start)</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #030308;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+    #gameContainer {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    canvas {
+      display: block;
+      background: radial-gradient(circle at center, #0a0a1a 0%, #020205 100%);
+      box-shadow: 0 0 20px rgba(180, 0, 255, 0.2);
+    }
+    #ui {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      right: 20px;
+      color: #df80ff;
+      font-size: 18px;
+      font-weight: bold;
+      pointer-events: none;
+      display: flex;
+      justify-content: space-between;
+    }
+    #overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(3, 3, 8, 0.92);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: #fff;
+      padding: 20px;
+    }
+    #overlay h1 {
+      margin: 0 0 10px 0;
+      font-size: 32px;
+      color: #df80ff;
+      text-shadow: 0 0 15px #df80ff;
+      text-align: center;
+    }
+    #overlay p {
+      font-size: 16px;
+      margin-bottom: 25px;
+      color: #aaa;
+      text-align: center;
+      line-height: 1.5;
+    }
+    #startBtn {
+      padding: 15px 35px;
+      font-size: 18px;
+      font-weight: bold;
+      color: #030308;
+      background: #df80ff;
+      border: none;
+      border-radius: 30px;
+      box-shadow: 0 0 20px rgba(223, 128, 255, 0.6);
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="gameContainer">
+    <canvas id="gameCanvas"></canvas>
+    <div id="ui">
+      <div>Level: <span id="levelText">1</span> / 10</div>
+      <div>Threads: <span id="threadText">Active</span></div>
+    </div>
+    
+    <div id="overlay">
+      <h1 id="titleText">GRAVITY WEAVER</h1>
+      <p id="subText">Drag across the screen to set gravity directions.<br>Guide the orb safely into the portal!</p>
+      <button id="startBtn">WEAVE GRAVITY</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const levelText = document.getElementById('levelText');
+    const overlay = document.getElementById('overlay');
+    const titleText = document.getElementById('titleText');
+    const subText = document.getElementById('subText');
+    const startBtn = document.getElementById('startBtn');
+
+    let width, height;
+    function resize() {
+      width = Math.min(window.innerWidth, 480);
+      height = Math.min(window.innerHeight, 800);
+      canvas.width = width;
+      canvas.height = height;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    let isPlaying = false;
+    let level = 1;
+    let dragStart = null;
+    let dragCurrent = null;
+    let gravityVector = null;
+
+    // Orb Object
+    const orb = {
+      x: 0,
+      y: 0,
+      vx: 0,
+      vy: 0,
+      radius: 10,
+      color: '#00ffff',
+
+      reset(x, y) {
+        this.x = x;
+        this.y = y;
+        this.vx = 0;
+        this.vy = 0;
+      },
+
+      update() {
+        if (gravityVector) {
+          const fx = (gravityVector.x2 - gravityVector.x1) * 0.004;
+          const fy = (gravityVector.y2 - gravityVector.y1) * 0.004;
+          this.vx += fx;
+          this.vy += fy;
+        }
+
+        this.vx *= 0.988;
+        this.vy *= 0.988;
+
+        this.x += this.vx;
+        this.y += this.vy;
+
+        // Bouncing off boundary edges
+        if (this.x - this.radius < 0) { this.x = this.radius; this.vx *= -0.8; }
+        if (this.x + this.radius > width) { this.x = width - this.radius; this.vx *= -0.8; }
+        if (this.y - this.radius < 0) { this.y = this.radius; this.vy *= -0.8; }
+        if (this.y + this.radius > height) { this.y = height - this.radius; this.vy *= -0.8; }
+      },
+
+      draw() {
+        ctx.fillStyle = this.color;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    };
+
+    // Portal Object
+    const portal = {
+      x: 0,
+      y: 0,
+      radius: 22,
+      angle: 0,
+
+      draw() {
+        this.angle += 0.06;
+        ctx.save();
+        ctx.translate(this.x, this.y);
+        ctx.rotate(this.angle);
+
+        ctx.strokeStyle = '#df80ff';
+        ctx.lineWidth = 4;
+        ctx.shadowBlur = 15;
+        ctx.shadowColor = '#df80ff';
+        ctx.beginPath();
+        ctx.arc(0, 0, this.radius, 0, Math.PI * 1.5);
+        ctx.stroke();
+
+        ctx.restore();
+      }
+    };
+
+    let hazards = [];
+    let particles = [];
+
+    function setupLevel(lvl) {
+      gravityVector = null;
+      hazards = [];
+
+      if (lvl === 1) {
+        // Level 1 (EASY): Tiny center block, clear straight path to portal
+        orb.reset(width / 2, height - 100);
+        portal.x = width / 2;
+        portal.y = 100;
+        hazards.push({ x: width / 2 - 35, y: height / 2, w: 70, h: 18, vx: 0, vy: 0 });
+      } 
+      else if (lvl === 2) {
+        // Level 2 (EASY): Wide gaps for comfortable zig-zagging
+        orb.reset(70, height - 100);
+        portal.x = width - 70;
+        portal.y = 100;
+        hazards.push({ x: 0, y: height * 0.38, w: width * 0.5, h: 18, vx: 0, vy: 0 });
+        hazards.push({ x: width * 0.5, y: height * 0.65, w: width * 0.5, h: 18, vx: 0, vy: 0 });
+      } 
+      else if (lvl === 3) {
+        // Level 3 (EASY): Very slow horizontal sweeper with ample room
+        orb.reset(width / 2, height - 90);
+        portal.x = width / 2;
+        portal.y = 90;
+        hazards.push({ x: 30, y: height / 2, w: 100, h: 18, vx: 1.5, vy: 0, minX: 20, maxX: width - 120 });
+      } 
+      else if (lvl === 4) {
+        // Level 4 (HARD): Extreme Needle Threader
+        orb.reset(width / 2, height - 80);
+        portal.x = width / 2;
+        portal.y = 80;
+        hazards.push({ x: 0, y: height * 0.5, w: width / 2 - 16, h: 22, vx: 0, vy: 0 });
+        hazards.push({ x: width / 2 + 16, y: height * 0.5, w: width / 2 - 16, h: 22, vx: 0, vy: 0 });
+      } 
+      else if (lvl === 5) {
+        // Level 5 (HARD): High-Speed Crushing Lasers
+        orb.reset(width / 2, height - 80);
+        portal.x = width / 2;
+        portal.y = 80;
+        hazards.push({ x: 10, y: height * 0.32, w: 150, h: 20, vx: 5.5, vy: 0, minX: 10, maxX: width - 160 });
+        hazards.push({ x: width - 160, y: height * 0.62, w: 150, h: 20, vx: -5.5, vy: 0, minX: 10, maxX: width - 160 });
+      } 
+      else if (lvl === 6) {
+        // Level 6 (HARD): Quad Wall Gauntlet
+        orb.reset(40, height - 70);
+        portal.x = width - 50;
+        portal.y = 70;
+        hazards.push({ x: width * 0.2, y: height * 0.2, w: width * 0.8, h: 20, vx: 0, vy: 0 });
+        hazards.push({ x: 0, y: height * 0.4, w: width * 0.8, h: 20, vx: 0, vy: 0 });
+        hazards.push({ x: width * 0.2, y: height * 0.6, w: width * 0.8, h: 20, vx: 0, vy: 0 });
+        hazards.push({ x: 10, y: height * 0.8, w: 130, h: 20, vx: 4, vy: 0, minX: 10, maxX: width - 140 });
+      }
+      else if (lvl === 7) {
+        // Level 7 (HARD): Fast Vertical Piston Doors
+        orb.reset(width / 2, height - 80);
+        portal.x = width / 2;
+        portal.y = 80;
+        hazards.push({ x: width * 0.2, y: height * 0.2, w: 22, h: 180, vx: 0, vy: 5, minY: height * 0.15, maxY: height * 0.5 });
+        hazards.push({ x: width * 0.7, y: height * 0.4, w: 22, h: 180, vx: 0, vy: -5, minY: height * 0.15, maxY: height * 0.5 });
+      }
+      else if (lvl === 8) {
+        // Level 8 (HARD): High Speed Crossfire
+        orb.reset(50, height - 50);
+        portal.x = width - 50;
+        portal.y = 50;
+        hazards.push({ x: 10, y: height * 0.45, w: 160, h: 20, vx: 6, vy: 0, minX: 10, maxX: width - 170 });
+        hazards.push({ x: width / 2 - 12, y: height * 0.15, w: 24, h: 180, vx: 0, vy: 5, minY: height * 0.15, maxY: height * 0.6 });
+      }
+      else if (lvl === 9) {
+        // Level 9 (HARD): Dense Minefield
+        orb.reset(width / 2, height - 50);
+        portal.x = width / 2;
+        portal.y = 50;
+        hazards.push({ x: width * 0.1, y: height * 0.75, w: 80, h: 25, vx: 0, vy: 0 });
+        hazards.push({ x: width * 0.68, y: height * 0.75, w: 80, h: 25, vx: 0, vy: 0 });
+        hazards.push({ x: width * 0.38, y: height * 0.55, w: 90, h: 25, vx: 0, vy: 0 });
+        hazards.push({ x: width * 0.08, y: height * 0.35, w: 85, h: 25, vx: 0, vy: 0 });
+        hazards.push({ x: width * 0.68, y: height * 0.35, w: 85, h: 25, vx: 0, vy: 0 });
+        hazards.push({ x: width * 0.3, y: height * 0.2, w: 120, h: 25, vx: 0, vy: 0 });
+      }
+      else if (lvl === 10) {
+        // Level 10 (HARD): Ultimate Gauntlet
+        orb.reset(width / 2, height - 60);
+        portal.x = width / 2;
+        portal.y = 60;
+        hazards.push({ x: 0, y: height * 0.8, w: width * 0.43, h: 20, vx: 0, vy: 0 });
+        hazards.push({ x: width * 0.57, y: height * 0.8, w: width * 0.43, h: 20, vx: 0, vy: 0 });
+        hazards.push({ x: 10, y: height * 0.55, w: 140, h: 20, vx: 6.5, vy: 0, minX: 10, maxX: width - 150 });
+        hazards.push({ x: width - 150, y: height * 0.3, w: 140, h: 20, vx: -6.5, vy: 0, minX: 10, maxX: width - 150 });
+        hazards.push({ x: width / 2 - 15, y: height * 0.15, w: 30, h: 80, vx: 0, vy: 0 });
+      }
+    }
+
+    function createParticleBurst(x, y, count, color) {
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = Math.random() * 6 + 2;
+        particles.push({
+          x: x,
+          y: y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          size: Math.random() * 4 + 2,
+          color: color,
+          alpha: 1,
+          decay: Math.random() * 0.05 + 0.02
+        });
+      }
+    }
+
+    function getCanvasCoords(e) {
+      const rect = canvas.getBoundingClientRect();
+      const touch = e.touches ? e.touches[0] : e;
+      return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+    }
+
+    window.addEventListener('touchstart', (e) => {
+      if (!isPlaying) return;
+      e.preventDefault();
+      dragStart = getCanvasCoords(e);
+      dragCurrent = dragStart;
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+      if (!isPlaying || !dragStart) return;
+      e.preventDefault();
+      dragCurrent = getCanvasCoords(e);
+    }, { passive: false });
+
+    window.addEventListener('touchend', () => {
+      if (!isPlaying || !dragStart || !dragCurrent) return;
+      gravityVector = {
+        x1: dragStart.x,
+        y1: dragStart.y,
+        x2: dragCurrent.x,
+        y2: dragCurrent.y
+      };
+      dragStart = null;
+      dragCurrent = null;
+    });
+
+    startBtn.addEventListener('click', () => {
+      if (startBtn.getAttribute('data-reset') === 'true') {
+        level = 1;
+      }
+      levelText.innerText = level;
+      setupLevel(level);
+      isPlaying = true;
+      overlay.style.display = 'none';
+      requestAnimationFrame(gameLoop);
+    });
+
+    function gameOver(reason) {
+      isPlaying = false;
+      if (reason === 'win') {
+        titleText.innerText = "CAMPAIGN COMPLETE!";
+        subText.innerText = "You navigated all 10 gravity challenges!";
+        startBtn.innerText = "PLAY AGAIN";
+        startBtn.setAttribute('data-reset', 'true');
+      } else {
+        titleText.innerText = "DISINTEGRATED";
+        subText.innerText = `Orb destroyed on Level ${level}.\nTap to retry this level!`;
+        startBtn.innerText = `RETRY LEVEL ${level}`;
+        startBtn.setAttribute('data-reset', 'false');
+      }
+      overlay.style.display = 'flex';
+    }
+
+    // Game Loop
+    function gameLoop() {
+      if (!isPlaying) return;
+
+      ctx.clearRect(0, 0, width, height);
+
+      // Draw Portal
+      portal.draw();
+
+      // Update & Draw Hazards
+      ctx.fillStyle = '#ff0055';
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = '#ff0055';
+      
+      hazards.forEach(h => {
+        if (h.vx && h.vx !== 0) {
+          h.x += h.vx;
+          if (h.x <= h.minX || h.x >= h.maxX) {
+            h.vx *= -1;
+          }
+        }
+        if (h.vy && h.vy !== 0) {
+          h.y += h.vy;
+          if (h.y <= h.minY || h.y >= h.maxY) {
+            h.vy *= -1;
+          }
+        }
+
+        ctx.fillRect(h.x, h.y, h.w, h.h);
+
+        // Collision Check
+        if (
+          orb.x + orb.radius > h.x &&
+          orb.x - orb.radius < h.x + h.w &&
+          orb.y + orb.radius > h.y &&
+          orb.y - orb.radius < h.y + h.h
+        ) {
+          createParticleBurst(orb.x, orb.y, 30, '#ff0055');
+          gameOver('lose');
+          return;
+        }
+      });
+      ctx.shadowBlur = 0;
+
+      // Check Portal Victory
+      const distToPortal = Math.hypot(orb.x - portal.x, orb.y - portal.y);
+      if (distToPortal < orb.radius + portal.radius) {
+        createParticleBurst(portal.x, portal.y, 35, '#df80ff');
+        level++;
+        if (level > 10) {
+          gameOver('win');
+          return;
+        } else {
+          levelText.innerText = level;
+          setupLevel(level);
+        }
+      }
+
+      // Update & Draw Orb
+      orb.update();
+      orb.draw();
+
+      // Live Vector Drag Line
+      if (dragStart && dragCurrent) {
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(dragStart.x, dragStart.y);
+        ctx.lineTo(dragCurrent.x, dragCurrent.y);
+        ctx.stroke();
+      }
+
+      // Active Gravity Thread Line
+      if (gravityVector) {
+        ctx.strokeStyle = 'rgba(223, 128, 255, 0.6)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(gravityVector.x1, gravityVector.y1);
+        ctx.lineTo(gravityVector.x2, gravityVector.y2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Particle Trail Updates
+      for (let i = particles.length - 1; i >= 0; i--) {
+        let p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.alpha -= p.decay;
+
+        if (p.alpha <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+
+        ctx.save();
+        ctx.globalAlpha = p.alpha;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+  </script>
+</body>
+  </html>
+  
